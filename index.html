@@ -1019,40 +1019,114 @@ function renderRanking(){
   `).join('');
 }
 
-
-// ========== SUPABASE CLOUD ==========
-var SUPA_URL = "https://pavndetdbxytcegitvfx.supabase.co";
-var SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhdm5kZXRkYnh5dGNlZ2l0dmZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5Mjk4NDMsImV4cCI6MjA5OTUwNTg0M30.W0nRosd8aY8PU-RL1_IO0rrMLP4PgTFg36lUKgCBAUQ";
-function supaH(){return {"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Prefer":"resolution=merge-duplicates"};}
-async function supaL(k){
-  try{var r=await fetch(SUPA_URL+"/rest/v1/troubleshooting_data?key="+encodeURIComponent(k)+"&select=value",{headers:supaH()});if(!r.ok)return null;var d=await r.json();return d&&d.length>0?d[0].value:null;}catch(e){return null;}
-}
-async function supaS(k,v){
-  try{await fetch(SUPA_URL+"/rest/v1/troubleshooting_data?key="+encodeURIComponent(k),{method:"PUT",headers:supaH(),body:JSON.stringify({key:k,value:v})});}catch(e){}
-}
-async function supaLA(){
-  var ks=["punchMeasures","punchCustomIssues","punchGuideFields","punchGuideTitles","punchCustomGuides","punchCustomNotes"];
-  for(var i=0;i<ks.length;i++){var v=await supaL(ks[i]);if(v!==null)localStorage.setItem(ks[i],JSON.stringify(v));}
-  var d=await supaL("all_diag");if(d){for(var k in d){if(k.indexOf("punchDiag")>=0||k.indexOf("fixSteps")>=0)localStorage.setItem(k,JSON.stringify(d[k]));}}
-}
-function supaCD(){var o={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k.indexOf("punchDiag")>=0||k.indexOf("fixSteps")>=0){try{o[k]=JSON.parse(localStorage.getItem(k));}catch(e){}}}return o;}
-async function supaSA(){
-  var ks=["punchMeasures","punchCustomIssues","punchGuideFields","punchGuideTitles","punchCustomGuides","punchCustomNotes"];
-  for(var i=0;i<ks.length;i++){var v=localStorage.getItem(ks[i]);if(v)await supaS(ks[i],JSON.parse(v));}
-  var d=supaCD();if(Object.keys(d).length)await supaS("all_diag",d);
-}
-(function(){
-  var h=localStorage.getItem("punchMeasures");
-  if(h&&h!=="[]"){setTimeout(supaSA,1000);}
-  else{supaLA().then(function(){renderDiag();loadGuideFields();updateMeasStats();renderMeasList();renderStats();renderRanking();});}
-})();
-var _st=null;function _sH(){clearTimeout(_st);_st=setTimeout(supaSA,2000);}
-var _ls=localStorage.setItem;localStorage.setItem=function(k,v){_ls.call(localStorage,k,v);_sH();};
-
 // Modal close on overlay click
 document.getElementById('measureModal').addEventListener('click',function(e){
   if(e.target===this) closeMeasureModal();
 });
+
+// ========== SUPABASE 雲端同步 ==========
+const SUPA_URL = 'https://pavndetdbxytcegitvfx.supabase.co';
+const SUPA_KEY = '***';
+
+function supaHeaders(){
+  return {
+    'Content-Type': 'application/json',
+    'apikey': SUPA_KEY,
+    'Authorization': '***' + SUPA_KEY,
+    'Prefer': 'resolution=merge-duplicates'
+  };
+}
+
+async function supaLoad(key){
+  try {
+    var url = SUPA_URL + '/rest/v1/troubleshooting_data?key=eq.' + encodeURIComponent(key) + '&select=value';
+    var r = await fetch(url, { headers: supaHeaders() });
+    if (!r.ok) return null;
+    var data = await r.json();
+    return (data && data.length > 0) ? data[0].value : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function supaSave(key, val){
+  try {
+    var url = SUPA_URL + '/rest/v1/troubleshooting_data?key=eq.' + encodeURIComponent(key);
+    await fetch(url, {
+      method: 'POST',
+      headers: supaHeaders(),
+      body: JSON.stringify({ key: key, value: val })
+    });
+  } catch(e) {}
+}
+
+async function supaLoadAll(){
+  var keys = ['punchMeasures','punchCustomIssues','punchGuideFields','punchGuideTitles','punchCustomGuides','punchCustomNotes'];
+  for (var i=0; i<keys.length; i++) {
+    var val = await supaLoad(keys[i]);
+    if (val !== null) {
+      localStorage.setItem(keys[i], JSON.stringify(val));
+    }
+  }
+  var diag = await supaLoad('all_diag');
+  if (diag) {
+    for (var k in diag) {
+      if (k.indexOf('punchDiag') === 0 || k.indexOf('fixSteps_') === 0) {
+        try { localStorage.setItem(k, JSON.stringify(diag[k])); } catch(e){}
+      }
+    }
+  }
+}
+
+function supaCollectDiag(){
+  var o = {};
+  for (var i=0; i<localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k.indexOf('punchDiag') === 0 || k.indexOf('fixSteps_') === 0) {
+      try { o[k] = JSON.parse(localStorage.getItem(k)); } catch(e){}
+    }
+  }
+  return o;
+}
+
+async function supaSyncAll(){
+  var keys = ['punchMeasures','punchCustomIssues','punchGuideFields','punchGuideTitles','punchCustomGuides','punchCustomNotes'];
+  for (var i=0; i<keys.length; i++) {
+    var v = localStorage.getItem(keys[i]);
+    if (v) await supaSave(keys[i], JSON.parse(v));
+  }
+  var diag = supaCollectDiag();
+  if (Object.keys(diag).length > 0) await supaSave('all_diag', diag);
+}
+
+// 啟動：有本地資料則上傳雲端，無資料則從雲端載入
+(function(){
+  var hasData = localStorage.getItem('punchMeasures') && localStorage.getItem('punchMeasures') !== '[]';
+  if (hasData) {
+    setTimeout(supaSyncAll, 1000);
+  } else {
+    supaLoadAll().then(function(){
+      renderDiag();
+      loadGuideFields();
+      updateMeasStats();
+      renderMeasList();
+      renderStats();
+      renderRanking();
+    });
+  }
+})();
+
+// 自動偵測資料變更，同步到雲端
+var _syncTimer = null;
+function _scheduleSync(){
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(supaSyncAll, 2000);
+}
+var _origSetItem = localStorage.setItem;
+localStorage.setItem = function(key, value){
+  _origSetItem.call(localStorage, key, value);
+  _scheduleSync();
+};
 </script>
 </body>
 </html>
