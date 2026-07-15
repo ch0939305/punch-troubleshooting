@@ -528,6 +528,7 @@ function toggleTheme(){
 function switchTab(idx){
   document.querySelectorAll('.tab-item').forEach((t,i)=>t.classList.toggle('active',i===idx));
   document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i===idx));
+  if(idx===1){ loadGuideFields(); }
   if(idx===2){ updateMeasStats(); renderMeasList(); }
   if(idx===3){ renderStats(); renderRanking(); }
 }
