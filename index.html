@@ -222,20 +222,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
   <!-- ==================== MODULE 2: 排除指南 ==================== -->
   <div id="page1" class="page">
     <div class="card">
-      <div class="card-header">📋 故障排除指南</div>
+      <div class="card-header">📋 排除指南</div>
       <div class="card-body">
-        <div class="unit-tabs" id="guideCats"></div>
-      </div>
-    </div>
-    <div id="guideList"></div>
-
-    <!-- Guide detail panel -->
-    <div id="guideDetail" style="display:none">
-      <div class="card">
-        <div class="card-body" id="guideDetailContent"></div>
-        <div class="card-body" style="padding-top:0">
-          <button class="btn btn-outline" onclick="closeGuideDetail()">← 返回列表</button>
-        </div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">自行填寫排除指南內容</p>
+        <div id="guideFields"></div>
       </div>
     </div>
   </div>
@@ -519,8 +509,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(currentTheme==='dark') document.body.classList.add('dark');
   document.getElementById('themeBtn').textContent = currentTheme==='dark' ? '☀️' : '🌙';
   renderDiag();
-  renderGuideCategories();
-  renderGuides();
+  loadGuideFields();
   updateMeasStats();
   renderMeasList();
   renderStats();
@@ -597,7 +586,33 @@ function renderDiagResult(){
   if(!savedCauses) savedCauses = [...selectedIssue.causes];
   const c = document.getElementById('diagResultContent');
   c.innerHTML = `
-    <div style="font-size:15px;font-weight:600;margin-bottom:6px">🛠️ ${selectedIssue.title}</div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:2px">問題名稱</div>
+      <input type="text" id="diagEditTitle" value="${selectedIssue.title}"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:600;outline:none;background:var(--card);color:var(--text);font-family:inherit"
+        onchange="selectedIssue.title=this.value;saveIssues();renderDiag()" placeholder="輸入問題名稱">
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:2px">問題描述</div>
+      <textarea id="diagEditDesc" rows="2"
+        style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+        onchange="selectedIssue.desc=this.value;saveIssues();renderDiag()" placeholder="輸入問題描述">${selectedIssue.desc}</textarea>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:2px">嚴重程度</div>
+      <select id="diagEditSeverity" onchange="selectedIssue.severity=this.value;saveIssues();renderDiag()"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit">
+        <option value="danger" ${selectedIssue.severity==='danger'?'selected':''}>⚠️ 緊急</option>
+        <option value="warn" ${selectedIssue.severity==='warn'?'selected':''}>⚡ 注意</option>
+        <option value="success" ${selectedIssue.severity==='success'?'selected':''}>🔵 常規</option>
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">標籤（逗號分隔）</div>
+      <input type="text" id="diagEditTags" value="${selectedIssue.tags.join('、')}"
+        style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit"
+        onchange="selectedIssue.tags=this.value.split(/[、,]/).map(t=>t.trim()).filter(Boolean);saveIssues();renderDiag()" placeholder="例如：斷裂、高應力">
+    </div>
     <div style="margin-bottom:10px">
       <div style="font-size:11px;color:var(--text2);margin-bottom:4px">可能原因</div>
       <div id="diagCausesList">
@@ -818,14 +833,13 @@ function deleteIssue(id){
 function addIssue(){
   const newId = Math.max(...issues.map(i=>i.id),0)+1;
   issues.push({
-    id:newId, title:'新問題', desc:'請輸入問題描述', tags:['自訂'], severity:'warn',
-    causes:['原因1'], fix:'guideWear'
+    id:newId, title:'', desc:'', tags:['自訂'], severity:'warn',
+    causes:[''], fix:'guideWear'
   });
   saveIssues();
   renderDiag();
   // 自動選取新項目編輯
   selectIssue(newId);
-  showToast('➕ 已新增，請編輯內容');
 }
 
 function saveIssues(){
@@ -834,172 +848,46 @@ function saveIssues(){
 }
 
 // ========== MODULE 2: GUIDE ==========
-function renderGuideCategories(){
-  const cats = ['全部','斷裂','磨耗','品質','尺寸','脫模'];
-  const c = document.getElementById('guideCats');
-  c.innerHTML = cats.map((cat,i)=>`<span class="unit-tab ${i===0?'active':''}" onclick="filterGuideCat(${i})">${cat}</span>`).join('');
-}
-
-const guideCatMap = {
-  0:'all',1:'guideBreak',2:'guideWear',3:'guideBurr',4:'guideDim',5:'guideStick'
-};
-
-function filterGuideCat(idx){
-  document.querySelectorAll('#guideCats .unit-tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
-  if(idx===0) renderGuides();
-  else {
-    const key = guideCatMap[idx];
-    renderGuides([{key,...guides[key]}]);
+function loadGuideFields(){
+  const saved = JSON.parse(localStorage.getItem('punchGuideFields') || '[]');
+  const titles = JSON.parse(localStorage.getItem('punchGuideTitles') || '[]');
+  const div = document.getElementById('guideFields');
+  div.innerHTML = '';
+  for(let i=0; i<5; i++){
+    const t = document.createElement('div');
+    t.style.marginBottom = '12px';
+    t.innerHTML = `
+      <input type="text" id="gf_title_${i}" value="${(titles[i] || '欄位 '+(i+1)).replace(/"/g,'&quot;')}"
+        style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;outline:none;background:var(--card);color:var(--text);font-family:inherit;margin-bottom:4px"
+        placeholder="輸入標題..."
+        onchange="saveGuideTitles()">
+      <textarea id="gf_${i}" rows="3"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+        placeholder="輸入內容...">${(saved[i] || '').replace(/"/g,'&quot;')}</textarea>
+    `;
+    div.appendChild(t);
+    // 綁定內容儲存
+    const ta = t.querySelector('textarea');
+    ta.oninput = function(){ saveGuideContent(); };
   }
 }
 
-function renderGuides(arr){
-  const data = arr || Object.entries(guides).map(([k,v])=>({key:k,...v}));
-  const list = document.getElementById('guideList');
-  list.innerHTML = data.map(g=>`
-    <div class="card" style="cursor:pointer" onclick="openGuide('${g.key}')">
-      <div class="card-body">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:28px">${g.img||'📋'}</span>
-          <div>
-            <div style="font-size:14px;font-weight:600">${g.title}</div>
-            <div style="font-size:12px;color:var(--text2)">${g.tips?.slice(0,20)}…</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `).join('');
+function saveGuideContent(){
+  const vals = [];
+  for(let i=0; i<5; i++){
+    const ta = document.getElementById('gf_'+i);
+    vals.push(ta ? ta.value : '');
+  }
+  localStorage.setItem('punchGuideFields', JSON.stringify(vals));
 }
 
-function filterGuide(){
-  const q = document.getElementById('guideSearch').value.toLowerCase();
-  if(!q) return renderGuides();
-  const filtered = Object.entries(guides).filter(([k,v])=>v.title.includes(q)||v.tips.includes(q)).map(([k,v])=>({key:k,...v}));
-  renderGuides(filtered);
-}
-
-function renderGuideSteps(key, g){
-  const note = customNotes[key] || '';
-  return `
-    <div class="detail-header">
-      <div class="dh-title">${g.img||'📋'} ${g.title}</div>
-      <div class="dh-sub">${g.tips}</div>
-    </div>
-    <div class="detail-section">
-      <div class="ds-title">🔧 排除步驟 <span style="font-size:11px;color:var(--text2);font-weight:400">（點擊文字編輯，按 Enter 儲存）</span></div>
-      <div id="stepList">
-        ${g.steps.map((s,i)=>`
-          <div class="step-item" style="position:relative">
-            <div class="step-num">${i+1}</div>
-            <div class="step-content">
-              <span class="step-title" onclick="editStep(this,${i})" 
-                    style="padding:4px 8px;border-radius:6px;cursor:text;display:block;min-height:24px">${s}</span>
-            </div>
-            <span onclick="removeStep(${i})" style="position:absolute;right:4px;top:4px;cursor:pointer;font-size:14px;color:var(--danger);padding:4px" title="刪除此步驟">🗑️</span>
-          </div>
-        `).join('')}
-      </div>
-      <button class="btn btn-outline" onclick="addStep()" style="margin-top:8px;padding:8px;font-size:13px">➕ 新增步驟</button>
-    </div>
-    <div class="detail-section">
-      <div class="ds-title">📝 自訂備註</div>
-      <textarea id="customNoteInput" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;min-height:100px;resize:vertical" placeholder="在此輸入自訂內容…">${note}</textarea>
-      <div style="font-size:11px;color:var(--text2);margin-top:4px">文字會自動儲存</div>
-    </div>
-    <button class="btn btn-outline" onclick="closeGuideDetail()" style="margin-top:4px;padding:8px;font-size:13px">← 返回列表</button>
-  `;
-}
-
-let editingGuideKey = null;
-
-function openGuide(key){
-  const g = guides[key];
-  if(!g) return;
-  editingGuideKey = key;
-  document.getElementById('guideDetail').style.display='block';
-  document.getElementById('guideList').style.display='none';
-  document.getElementById('guideDetailContent').innerHTML = renderGuideSteps(key, g);
-  // 綁定自訂備註自動儲存
-  setTimeout(()=>{
-    const ta = document.getElementById('customNoteInput');
-    if(ta){
-      ta.addEventListener('input', function(){
-        customNotes[key] = this.value;
-        localStorage.setItem('punchCustomNotes', JSON.stringify(customNotes));
-      });
-    }
-  }, 50);
-  window.scrollTo({top:document.getElementById('guideDetail').offsetTop-70,behavior:'smooth'});
-}
-
-function closeGuideDetail(){
-  document.getElementById('guideDetail').style.display='none';
-  document.getElementById('guideList').style.display='block';
-}
-
-function editStep(el, idx){
-  const oldText = el.textContent.trim();
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.value = oldText;
-  input.style.cssText = 'width:100%;padding:6px 8px;border:2px solid var(--primary);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card);color:var(--text);outline:none';
-  el.replaceWith(input);
-  input.focus();
-  input.select();
-  const save = ()=>{
-    const val = input.value.trim();
-    const span = document.createElement('span');
-    span.className = 'step-title';
-    span.style.cssText = 'padding:4px 8px;border-radius:6px;cursor:text;display:block;min-height:24px';
-    span.onclick = function(){editStep(this, idx);};
-    span.textContent = val || oldText;
-    input.replaceWith(span);
-    if(val && val !== oldText){
-      guides[editingGuideKey].steps[idx] = val;
-      saveGuides();
-    }
-  };
-  input.addEventListener('blur', save);
-  input.addEventListener('keydown', function(e){
-    if(e.key==='Enter'){ e.preventDefault(); save(); }
-    if(e.key==='Escape'){ save(); }
-  });
-}
-
-function addStep(){
-  const g = guides[editingGuideKey];
-  if(!g) return;
-  const idx = g.steps.length;
-  g.steps.push('新步驟內容');
-  saveGuides();
-  // 重新渲染
-  document.getElementById('guideDetailContent').innerHTML = renderGuideSteps(editingGuideKey, g);
-  // 自動聚焦最後一個步驟
-  setTimeout(()=>{
-    const items = document.querySelectorAll('#stepList .step-item');
-    const last = items[items.length-1];
-    if(last){
-      const title = last.querySelector('.step-title');
-      if(title) editStep(title, idx);
-    }
-  }, 50);
-}
-
-function removeStep(idx){
-  if(!confirm('確定刪除步驟 '+(idx+1)+'？')) return;
-  const g = guides[editingGuideKey];
-  if(!g || g.steps.length <= 1) return;
-  g.steps.splice(idx, 1);
-  saveGuides();
-  document.getElementById('guideDetailContent').innerHTML = renderGuideSteps(editingGuideKey, g);
-}
-
-function saveGuides(){
-  const key = editingGuideKey;
-  if(!key || !guides[key]) return;
-  customGuides[key] = [...guides[key].steps];
-  localStorage.setItem('punchCustomGuides', JSON.stringify(customGuides));
-  showToast('✅ 步驟已儲存');
+function saveGuideTitles(){
+  const titles = [];
+  for(let i=0; i<5; i++){
+    const inp = document.getElementById('gf_title_'+i);
+    titles.push(inp ? inp.value : '');
+  }
+  localStorage.setItem('punchGuideTitles', JSON.stringify(titles));
 }
 
 // ========== MODULE 3: MEASUREMENT ==========
