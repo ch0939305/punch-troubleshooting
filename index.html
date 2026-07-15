@@ -852,42 +852,50 @@ function loadGuideFields(){
   const saved = JSON.parse(localStorage.getItem('punchGuideFields') || '[]');
   const titles = JSON.parse(localStorage.getItem('punchGuideTitles') || '[]');
   const div = document.getElementById('guideFields');
+  if(!div) return;
   div.innerHTML = '';
   for(let i=0; i<5; i++){
-    const t = document.createElement('div');
-    t.style.marginBottom = '12px';
-    t.innerHTML = `
-      <input type="text" id="gf_title_${i}" value="${(titles[i] || '欄位 '+(i+1)).replace(/"/g,'&quot;')}"
-        style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;outline:none;background:var(--card);color:var(--text);font-family:inherit;margin-bottom:4px"
-        placeholder="輸入標題..."
-        onchange="saveGuideTitles()">
-      <textarea id="gf_${i}" rows="3"
-        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
-        placeholder="輸入內容...">${(saved[i] || '').replace(/"/g,'&quot;')}</textarea>
-    `;
-    div.appendChild(t);
-    // 綁定內容儲存
-    const ta = t.querySelector('textarea');
-    ta.oninput = function(){ saveGuideContent(); };
+    const ttl = titles[i] || '欄位 '+(i+1);
+    const box = document.createElement('div');
+    box.style.marginBottom = '12px';
+    box.innerHTML = '<span id="gfl_'+i+'" style="display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;cursor:pointer;padding:4px 6px;border-radius:6px" onclick="editGuideTitle('+i+')">'+ttl.replace(/"/g,'&quot;')+'</span>'+
+      '<textarea id="gf_'+i+'" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical" placeholder="輸入內容...">'+(saved[i]||'').replace(/"/g,'&quot;')+'</textarea>';
+    div.appendChild(box);
+    box.querySelector('textarea').oninput = function(){ saveGuideContent(); };
   }
 }
 
 function saveGuideContent(){
-  const vals = [];
-  for(let i=0; i<5; i++){
-    const ta = document.getElementById('gf_'+i);
+  var vals = [];
+  for(var i=0;i<5;i++){
+    var ta = document.getElementById('gf_'+i);
     vals.push(ta ? ta.value : '');
   }
   localStorage.setItem('punchGuideFields', JSON.stringify(vals));
 }
 
-function saveGuideTitles(){
-  const titles = [];
-  for(let i=0; i<5; i++){
-    const inp = document.getElementById('gf_title_'+i);
-    titles.push(inp ? inp.value : '');
+function editGuideTitle(idx){
+  var span = document.getElementById('gfl_'+idx);
+  if(!span) return;
+  var old = span.textContent;
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = old;
+  inp.style.cssText = 'width:100%;padding:4px 6px;border:2px solid var(--primary);border-radius:6px;font-size:13px;font-weight:600;outline:none;background:var(--card);color:var(--text);font-family:inherit;margin-bottom:4px';
+  span.replaceWith(inp);
+  inp.focus(); inp.select();
+  function doSave(){
+    var val = inp.value.trim();
+    var titles = JSON.parse(localStorage.getItem('punchGuideTitles') || '[]');
+    titles[idx] = val || old;
+    localStorage.setItem('punchGuideTitles', JSON.stringify(titles));
+    loadGuideFields();
   }
-  localStorage.setItem('punchGuideTitles', JSON.stringify(titles));
+  inp.addEventListener('blur', doSave);
+  inp.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ e.preventDefault(); doSave(); }
+    if(e.key==='Escape'){ doSave(); }
+  });
 }
 
 // ========== MODULE 3: MEASUREMENT ==========
