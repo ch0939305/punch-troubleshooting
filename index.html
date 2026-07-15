@@ -205,6 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
     <div id="diagList" class="card">
       <div class="card-body" id="diagBody"></div>
     </div>
+    <button class="btn btn-primary" onclick="addIssue()" style="margin-bottom:10px;padding:10px;font-size:14px">➕ 新增問題項目</button>
 
     <!-- Diagnosis result -->
     <div id="diagResult" style="display:none">
@@ -223,10 +224,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
     <div class="card">
       <div class="card-header">📋 故障排除指南</div>
       <div class="card-body">
-        <div class="search-bar">
-          <span class="sicon">🔎</span>
-          <input type="text" id="guideSearch" placeholder="搜尋問題..." oninput="filterGuide()">
-        </div>
         <div class="unit-tabs" id="guideCats"></div>
       </div>
     </div>
@@ -505,6 +502,9 @@ const guides = {
 let currentTheme = localStorage.getItem('punchTheme') || 'light';
 let measureData = JSON.parse(localStorage.getItem('punchMeasures') || '[]');
 let selectedIssue = null;
+// 載入自訂問題列表
+let customIssues = JSON.parse(localStorage.getItem('punchCustomIssues') || '[]');
+if(customIssues.length) issues = customIssues;
 // 載入已編輯的排除步驟（若無則用預設）
 let customGuides = JSON.parse(localStorage.getItem('punchCustomGuides') || '{}');
 // 載入自訂備註
@@ -557,13 +557,16 @@ function renderDiag(list){
   const data = list || issues;
   const body = document.getElementById('diagBody');
   body.innerHTML = data.map(issue=>`
-    <div class="issue-item" onclick="selectIssue(${issue.id})">
-      <div class="issue-top">
-        <span class="issue-title">${issue.title}</span>
-        <span class="issue-badge ${issue.severity}">${issue.severity==='danger'?'⚠️緊急':issue.severity==='warn'?'⚡注意':'🔵常規'}</span>
+    <div class="issue-item" style="position:relative">
+      <div style="cursor:pointer" onclick="selectIssue(${issue.id})">
+        <div class="issue-top">
+          <span class="issue-title">${issue.title}</span>
+          <span class="issue-badge ${issue.severity}">${issue.severity==='danger'?'⚠️緊急':issue.severity==='warn'?'⚡注意':'🔵常規'}</span>
+        </div>
+        <div class="issue-desc">${issue.desc}</div>
+        <div class="issue-tags">${issue.tags.map(t=>`<span>${t}</span>`).join('')}</div>
       </div>
-      <div class="issue-desc">${issue.desc}</div>
-      <div class="issue-tags">${issue.tags.map(t=>`<span>${t}</span>`).join('')}</div>
+      <span onclick="event.stopPropagation();deleteIssue(${issue.id})" style="position:absolute;right:0;bottom:8px;cursor:pointer;font-size:12px;color:var(--danger);padding:4px 10px;border:1px solid var(--danger);border-radius:6px;font-weight:600">刪除</span>
     </div>
   `).join('');
 }
@@ -577,24 +580,257 @@ function filterDiag(){
 
 function selectIssue(id){
   selectedIssue = issues.find(i=>i.id===id);
+  if(!selectedIssue) return;
   const div = document.getElementById('diagResult');
   div.style.display = 'block';
-  const c = document.getElementById('diagResultContent');
-  c.innerHTML = `
-    <div style="font-size:15px;font-weight:600;margin-bottom:6px">🛠️ ${selectedIssue.title}</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:10px">可能原因：</div>
-    <ul>${selectedIssue.causes.map(c=>`<li style="font-size:13px;margin-bottom:4px;padding-left:16px;list-style:none;position:relative"><span style="position:absolute;left:0">▸</span>${c}</li>`).join('')}</ul>
-  `;
-  // Highlight selected
+  renderDiagResult();
   document.querySelectorAll('#diagBody .issue-item').forEach(el=>el.style.background='transparent');
   window.scrollTo({top:div.offsetTop-70,behavior:'smooth'});
 }
 
+function renderDiagResult(){
+  if(!selectedIssue) return;
+  // 載入診斷記錄列表
+  let savedNotes = JSON.parse(localStorage.getItem('punchDiagNotes_'+selectedIssue.id) || '[]');
+  // 載入已編輯的可能原因
+  let savedCauses = JSON.parse(localStorage.getItem('punchDiagCauses_'+selectedIssue.id) || 'null');
+  if(!savedCauses) savedCauses = [...selectedIssue.causes];
+  const c = document.getElementById('diagResultContent');
+  c.innerHTML = `
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">🛠️ ${selectedIssue.title}</div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">可能原因</div>
+      <div id="diagCausesList">
+        ${savedCauses.map((cause,i)=>`
+          <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+            <span style="color:var(--primary);font-size:13px">▸</span>
+            <input type="text" value="${cause.replace(/"/g,'&quot;')}" data-cause-idx="${i}"
+              style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit"
+              onchange="saveDiagCauses()">
+            <span onclick="deleteDiagCause(${i})" style="cursor:pointer;font-size:14px;color:var(--danger);padding:2px" title="刪除">🗑️</span>
+          </div>
+        `).join('')}
+      </div>
+      <button onclick="addDiagCause()" style="margin-top:4px;padding:6px 12px;border:1px solid var(--primary);border-radius:6px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer">➕ 新增原因</button>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">診斷記錄</div>
+      <div id="diagNotesList">
+        ${savedNotes.length === 0 ? '<div style="font-size:12px;color:var(--text2);padding:8px 0">尚無診斷記錄</div>' :
+          savedNotes.map((note,i)=>`
+            <div style="display:flex;gap:6px;margin-bottom:4px;align-items:flex-start">
+              <span style="color:var(--warn);font-size:13px;margin-top:6px">📌</span>
+              <textarea rows="2"
+                style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+                onchange="saveDiagNotes()">${note.replace(/"/g,'&quot;')}</textarea>
+              <span onclick="deleteDiagNote(${i})" style="cursor:pointer;font-size:14px;color:var(--danger);padding:4px" title="刪除">🗑️</span>
+            </div>
+          `).join('')}
+      </div>
+      <button onclick="addDiagNote()" style="margin-top:4px;padding:6px 12px;border:1px solid var(--primary);border-radius:6px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer">➕ 新增記錄</button>
+    </div>
+  `;
+}
+
+function saveDiagCauses(){
+  const inputs = document.querySelectorAll('#diagCausesList input');
+  const causes = [];
+  inputs.forEach(inp => causes.push(inp.value));
+  localStorage.setItem('punchDiagCauses_'+selectedIssue.id, JSON.stringify(causes));
+}
+
+function addDiagCause(){
+  const div = document.getElementById('diagCausesList');
+  const idx = div.children.length;
+  const item = document.createElement('div');
+  item.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;align-items:center';
+  item.innerHTML = `
+    <span style="color:var(--primary);font-size:13px">▸</span>
+    <input type="text" value="新原因" data-cause-idx="${idx}"
+      style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit"
+      onchange="saveDiagCauses()">
+    <span onclick="deleteDiagCause(${idx})" style="cursor:pointer;font-size:14px;color:var(--danger);padding:2px" title="刪除">🗑️</span>
+  `;
+  div.appendChild(item);
+  saveDiagCauses();
+  // 自動聚焦
+  const inp = item.querySelector('input');
+  if(inp) { inp.focus(); inp.select(); }
+}
+
+function deleteDiagCause(idx){
+  if(!confirm('確定刪除此原因？')) return;
+  const div = document.getElementById('diagCausesList');
+  if(div.children.length <= 1) return;
+  div.removeChild(div.children[idx]);
+  saveDiagCauses();
+}
+
+function saveDiagNotes(){
+  const textareas = document.querySelectorAll('#diagNotesList textarea');
+  const notes = [];
+  textareas.forEach(ta => notes.push(ta.value));
+  localStorage.setItem('punchDiagNotes_'+selectedIssue.id, JSON.stringify(notes));
+}
+
+function addDiagNote(){
+  const div = document.getElementById('diagNotesList');
+  const emptyHint = div.querySelector('div[style*="尚無診斷記錄"]');
+  if(emptyHint) emptyHint.remove();
+  const item = document.createElement('div');
+  item.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;align-items:flex-start';
+  item.innerHTML = `
+    <span style="color:var(--warn);font-size:13px;margin-top:6px">📌</span>
+    <textarea rows="2"
+      style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+      onchange="saveDiagNotes()">新記錄</textarea>
+    <span onclick="deleteDiagNote()" style="cursor:pointer;font-size:14px;color:var(--danger);padding:4px" title="刪除">🗑️</span>
+  `;
+  div.appendChild(item);
+  saveDiagNotes();
+  const ta = item.querySelector('textarea');
+  if(ta) { ta.focus(); ta.select(); }
+}
+
+function deleteDiagNote(idx){
+  if(!confirm('確定刪除此記錄？')) return;
+  const div = document.getElementById('diagNotesList');
+  if(typeof idx !== 'number') {
+    // Called without idx from newly added item - find its index
+    const items = div.querySelectorAll('textarea');
+    for(let i=0; i<items.length; i++) {
+      if(items[i] === event.target.parentElement?.querySelector('textarea')) {
+        idx = i; break;
+      }
+    }
+  }
+  if(idx === undefined) return;
+  if(div.children.length <= 1) {
+    div.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">尚無診斷記錄</div>';
+    saveDiagNotes();
+    return;
+  }
+  div.removeChild(div.children[idx]);
+  saveDiagNotes();
+}
+
 function openFixGuide(){
   if(!selectedIssue) return;
-  const guideKey = selectedIssue.fix;
-  switchTab(1);
-  setTimeout(()=>openGuide(guideKey), 200);
+  showStepModal(selectedIssue);
+}
+
+function showStepModal(issue){
+  const key = 'fixSteps_' + issue.id;
+  let steps = JSON.parse(localStorage.getItem(key) || '[]');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay show';
+  overlay.id = 'stepFixModal';
+  overlay.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-handle"></div>
+      <div class="detail-header">
+        <div class="dh-title" style="font-size:15px">🔧 排除步驟 — ${issue.title}</div>
+        <div class="dh-sub">自行填寫排除步驟，可新增/刪除</div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">排除步驟</div>
+        <div id="blankStepList">
+          ${steps.length === 0 ? '<div style="font-size:12px;color:var(--text2);padding:8px 0">尚無步驟，請點擊下方按鈕新增</div>' :
+            steps.map((s,i)=>`
+              <div style="display:flex;gap:6px;margin-bottom:4px;align-items:flex-start">
+                <span style="color:var(--primary);font-size:13px;margin-top:8px;font-weight:700">${i+1}.</span>
+                <textarea rows="2" data-step-idx="${i}"
+                  style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+                  onchange="saveFixSteps()">${s}</textarea>
+                <span onclick="deleteFixStep(${i})" style="cursor:pointer;font-size:14px;color:var(--danger);padding:4px" title="刪除">🗑️</span>
+              </div>
+            `).join('')}
+        </div>
+        <button onclick="addFixStep()" style="margin-top:4px;padding:6px 12px;border:1px solid var(--primary);border-radius:6px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer;width:100%">➕ 新增步驟</button>
+      </div>
+      <button onclick="closeStepModal()" class="btn btn-outline">✕ 關閉</button>
+    </div>
+  `;
+  overlay.addEventListener('click', function(e){ if(e.target===this) closeStepModal(); });
+  document.body.appendChild(overlay);
+  editingGuideKey = key;
+}
+
+function closeStepModal(){
+  const el = document.getElementById('stepFixModal');
+  if(el) el.remove();
+}
+
+function saveFixSteps(){
+  const key = editingGuideKey;
+  if(!key) return;
+  const textareas = document.querySelectorAll('#blankStepList textarea');
+  const steps = [];
+  textareas.forEach(ta => steps.push(ta.value));
+  localStorage.setItem(key, JSON.stringify(steps));
+}
+
+function addFixStep(){
+  const div = document.getElementById('blankStepList');
+  const emptyHint = div.querySelector('div[style*="尚無步驟"]');
+  if(emptyHint) emptyHint.remove();
+  const idx = div.children.length;
+  const item = document.createElement('div');
+  item.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;align-items:flex-start';
+  item.innerHTML = `
+    <span style="color:var(--primary);font-size:13px;margin-top:8px;font-weight:700">${idx+1}.</span>
+    <textarea rows="2"
+      style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;background:var(--card);color:var(--text);font-family:inherit;resize:vertical"
+      onchange="saveFixSteps()">新步驟</textarea>
+    <span onclick="deleteFixStep(${idx})" style="cursor:pointer;font-size:14px;color:var(--danger);padding:4px" title="刪除">🗑️</span>
+  `;
+  div.appendChild(item);
+  saveFixSteps();
+  const ta = item.querySelector('textarea');
+  if(ta) { ta.focus(); ta.select(); }
+}
+
+function deleteFixStep(idx){
+  if(!confirm('確定刪除此步驟？')) return;
+  const div = document.getElementById('blankStepList');
+  if(!div) return;
+  if(typeof idx !== 'number') idx = 0;
+  if(div.children.length <= 1) {
+    div.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">尚無步驟，請點擊下方按鈕新增</div>';
+    saveFixSteps();
+    return;
+  }
+  div.removeChild(div.children[idx]);
+  saveFixSteps();
+}
+
+function deleteIssue(id){
+  if(!confirm('確定刪除此問題項目？')) return;
+  const idx = issues.findIndex(i=>i.id===id);
+  if(idx===-1) return;
+  issues.splice(idx,1);
+  saveIssues();
+  document.getElementById('diagResult').style.display='none';
+  renderDiag();
+  showToast('🗑️ 已刪除');
+}
+
+function addIssue(){
+  const newId = Math.max(...issues.map(i=>i.id),0)+1;
+  issues.push({
+    id:newId, title:'新問題', desc:'請輸入問題描述', tags:['自訂'], severity:'warn',
+    causes:['原因1'], fix:'guideWear'
+  });
+  saveIssues();
+  renderDiag();
+  // 自動選取新項目編輯
+  selectIssue(newId);
+  showToast('➕ 已新增，請編輯內容');
+}
+
+function saveIssues(){
+  customIssues = issues.map(i=>({...i}));
+  localStorage.setItem('punchCustomIssues', JSON.stringify(customIssues));
 }
 
 // ========== MODULE 2: GUIDE ==========
