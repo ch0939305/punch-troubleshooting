@@ -1019,6 +1019,95 @@ function renderRanking(){
   `).join('');
 }
 
+// ========== SUPABASE 雲端同步 ==========
+const SUPA_URL =  + SUPA_URL + ;
+const SUPA_KEY =  + ANON_KEY + ;
+const SUPA_HEADERS = { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'resolution=merge-duplicates' };
+
+async function supaSave(key, val){
+  try {
+    await fetch(SUPA_URL+'/rest/v1/troubleshooting_data?key=***'+key, {
+      method: 'PUT', headers: SUPA_HEADERS,
+      body: JSON.stringify({key: key, value: val})
+    });
+  } catch(e){}
+}
+
+async function supaLoad(key){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/troubleshooting_data?key=***'+key+'&select=value', {headers: SUPA_HEADERS});
+    if(!r.ok) return null;
+    var d = await r.json();
+    return d && d.length>0 ? d[0].value : null;
+  } catch(e){ return null; }
+}
+
+// 載入所有雲端資料到 localStorage
+async function supaLoadAll(){
+  var keys = ['punchMeasures','punchCustomIssues','punchGuideFields','punchGuideTitles','punchCustomGuides','punchCustomNotes'];
+  for(var i=0;i<keys.length;i++){
+    var val = await supaLoad(keys[i]);
+    if(val !== null) localStorage.setItem(keys[i], JSON.stringify(val));
+  }
+  // 診斷相關的動態 key
+  var all = await supaLoad('all_diag');
+  if(all){
+    for(var k in all){
+      if(k.startsWith('punchDiagNotes_')||k.startsWith('punchDiagCauses_')||k.startsWith('fixSteps_'))
+        localStorage.setItem(k, JSON.stringify(all[k]));
+    }
+  }
+}
+
+// 從 localStorage 同步所有資料到雲端
+async function supaSyncAll(){
+  var keys = ['punchMeasures','punchCustomIssues','punchGuideFields','punchGuideTitles','punchCustomGuides','punchCustomNotes'];
+  for(var i=0;i<keys.length;i++){
+    var val = localStorage.getItem(keys[i]);
+    if(val) await supaSave(keys[i], JSON.parse(val));
+  }
+  // 收集所有診斷動態資料
+  var diag = {};
+  for(var i=0;i<localStorage.length;i++){
+    var k = localStorage.key(i);
+    if(k.startsWith('punchDiagNotes_')||k.startsWith('punchDiagCauses_')||k.startsWith('fixSteps_'))
+      try { diag[k] = JSON.parse(localStorage.getItem(k)); } catch(e){}
+  }
+  if(Object.keys(diag).length > 0) await supaSave('all_diag', diag);
+}
+
+// 首次載入：從雲端拉資料
+(function(){
+  if(!localStorage.getItem('punchMeasures') || localStorage.getItem('punchMeasures')==='[]'){
+    supaLoadAll().then(function(){
+      renderDiag();
+      loadGuideFields();
+      updateMeasStats();
+      renderMeasList();
+      renderStats();
+      renderRanking();
+      supaSyncAll(); // sync back
+    });
+  } else {
+    supaSyncAll(); // push local to cloud
+  }
+})();
+
+// Hook into data saves (debounced)
+var _supaTimer = null;
+function supaScheduleSync(){
+  if(_supaTimer) clearTimeout(_supaTimer);
+  _supaTimer = setTimeout(supaSyncAll, 2000);
+}
+
+// Override localStorage.setItem to trigger sync
+var _origSet = localStorage.setItem;
+localStorage.setItem = function(k,v){
+  _origSet.call(localStorage, k, v);
+  supaScheduleSync();
+};
+
+// ========== MODAL ==========
 // Modal close on overlay click
 document.getElementById('measureModal').addEventListener('click',function(e){
   if(e.target===this) closeMeasureModal();
