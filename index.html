@@ -1025,14 +1025,14 @@ document.getElementById('measureModal').addEventListener('click',function(e){
 });
 
 // ========== SUPABASE 雲端同步 ==========
-const SUPA_URL = 'https://pavndetdbxytcegitvfx.supabase.co';
-const SUPA_KEY = '***';
+const SUPA_URL = 'https://jbrtneprhbkseqcmzhup.supabase.co';
+const SUPA_KEY = 'sb_publishable_d-cj8esvrTQ4wGQ7Fs2Xow_0vHZLNEC';
 
 function supaHeaders(){
   return {
     'Content-Type': 'application/json',
     'apikey': SUPA_KEY,
-    'Authorization': '***' + SUPA_KEY,
+    'Authorization': 'Bearer ' + SUPA_KEY,
     'Prefer': 'resolution=merge-duplicates'
   };
 }
